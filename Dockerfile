@@ -25,10 +25,7 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Clone the LightRAG repository and install it
-RUN git clone https://github.com/HKUDS/LightRAG.git && \
-    cd LightRAG && \
-    pip install -e . && \
-    pip install lightrag-hku
+RUN git clone https://github.com/HKUDS/LightRAG.git
 
 # Expose port 8000 for FastAPI
 EXPOSE 8000
