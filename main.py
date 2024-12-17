@@ -269,36 +269,27 @@ async def analyze_company(request: PipelineRequest):
             raise HTTPException(status_code=500, detail="Failed to process any articles through RAG system")
 
         report_prompt = f"""
-        Based on the recent news articles about {request.company_name}, create a comprehensive analysis focusing on:
-
-        1. Technological Innovations and R&D
-        - Specific tech projects currently under development
-        - Breakthrough technologies or patents
-        - Research initiatives and technological investments
-
-        2. Strategic Meetings and Collaborations
-        - Key executive meetings and strategic discussions
-        - Potential partnerships or joint ventures
-        - Significant industry conferences or events attended
-
-        3. Investment Landscape
-        - Recent funding rounds or investment activities
-        - Venture capital investments made by the company
-        - Strategic investments in startups or emerging technologies
-        - Mergers and acquisition interests
+        Based on the recent news articles about {request.company_name}, create a comprehensive analysis.
+        Focus only on factual information from the provided articles about:
+        1. Recent developments and announcements
+        2. Current business activities and strategies
+        3. Market position and performance
+        4. Challenges, opportunities, and future outlook
 
         Format the response as a JSON object with:
-        {
-            "tech_summary": "A concise overview of the company's most promising technological developments (2-3 paragraphs)",
-            "key_tech_points": ["List of 3-5 most significant technological or investment insights, each 1-2 sentences"]
-        }
+        {{
+            "summary": "A concise summary of the key findings (2-3 paragraphs)",
+            "key_points": ["List of 3-5 most important points, each 1-2 sentences"]
+        }}
         """
         
         try:
             report_result = await asyncio.wait_for(
                 rag.aquery(report_prompt),
-                timeout=60
+                timeout=200
             )
+
+            print(report_result)
 
             report_result = re.sub(r'^```json\s*', '', report_result, flags=re.MULTILINE)
             report_result = re.sub(r'\s*```$', '', report_result, flags=re.MULTILINE)
