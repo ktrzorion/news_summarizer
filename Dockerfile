@@ -20,15 +20,17 @@ RUN apt-get update && \
 # Copy application code and requirements
 COPY . .
 
+# Clone the LightRAG repository and install it
+# RUN git clone https://github.com/HKUDS/LightRAG.git
+RUN rm -rf LightRAG && git clone https://github.com/HKUDS/LightRAG.git
+
 # Upgrade pip and install Python dependencies
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
-
-# Clone the LightRAG repository and install it
-RUN git clone https://github.com/HKUDS/LightRAG.git
 
 # Expose port 8000 for FastAPI
 EXPOSE 8000
 
 # Command to run the FastAPI application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [ "sleep", "infinity" ]
