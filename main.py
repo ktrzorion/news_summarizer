@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import asyncio
 from bs4 import BeautifulSoup as bs
-from requests_html import AsyncHTMLSession
+import traceback
 from LightRAG.lightrag.llm import gpt_4o_complete
 from langchain_openai import OpenAI
 from datetime import datetime, timedelta
@@ -157,45 +157,79 @@ async def search_news(
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 async def scrape_article_content(url: str, max_retries: int = 3) -> str:
-    """Scrape the main content from a news article URL."""
+    """
+    Scrape the main content from a news article URL with multiple fallback strategies.
+    
+    Args:
+        url (str): The URL of the article to scrape
+        max_retries (int): Number of retry attempts
+    
+    Returns:
+        str: Extracted article content or empty string if scraping fails
+    """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     }
+
+    # Common news content selectors across different websites
+    content_selectors = [
+        'article', 
+        '.article-body', 
+        '.post-content', 
+        '#main-content', 
+        '.entry-content', 
+        'div[itemprop="articleBody"]'
+    ]
+
+    async def simple_extract(html_content: str) -> str:
+        """Extract content using multiple strategies"""
+        soup = bs(html_content, "html.parser")
+        
+        # Try specific selectors first
+        for selector in content_selectors:
+            content_block = soup.select_one(selector)
+            if content_block:
+                paragraphs = content_block.find_all('p')
+                content = ' '.join(
+                    p.get_text().strip() 
+                    for p in paragraphs 
+                    if len(p.get_text().strip()) > 20
+                )
+                if content:
+                    return content
+        
+        # Fallback to all paragraphs if specific selectors fail
+        paragraphs = soup.find_all('p')
+        content = ' '.join(
+            p.get_text().strip() 
+            for p in paragraphs 
+            if len(p.get_text().strip()) > 20
+        )
+        
+        return content
 
     for attempt in range(max_retries):
         try:
-            session = AsyncHTMLSession()
-            response = await session.get(url, headers=headers, timeout=30)
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+                response = await client.get(url, timeout=30)
+                
+                if response.status_code != 200:
+                    logger.warning(f"Failed to fetch {url}: Status {response.status_code}")
+                    await asyncio.sleep(1)
+                    continue
 
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch {url}: Status {response.status_code}")
-                continue
+                content = await simple_extract(response.text)
 
-            try:
-                await response.html.arender(timeout=30000, sleep=2)
-            except Exception as e:
-                logger.warning(f"Render failed for {url}: {e}")
-                content = response.html.html
-            else:
-                content = response.html.html
-
-            soup = bs(content, "html.parser")
-            paragraphs = soup.find_all('p')
-            content = ' '.join(
-                p.get_text().strip() 
-                for p in paragraphs 
-                if len(p.get_text().strip()) > 20
-            )
-
-            if content:
-                return content
+                if content:
+                    return content
 
         except Exception as e:
-            logger.warning(f"Attempt {attempt + 1} failed for {url}: {e}")
+            logger.error(f"Scraping attempt {attempt + 1} failed for {url}: {traceback.format_exc()}")
             await asyncio.sleep(1)
-        finally:
-            await session.close()
 
+    logger.warning(f"Failed to extract content from {url} after {max_retries} attempts")
     return ""
 
 @app.post("/analyze-company/", response_model=CompanyReport)
@@ -234,7 +268,6 @@ async def analyze_company(request: PipelineRequest):
         valid_articles = [
             article for article in article_contents 
             if article is not None 
-            and not isinstance(article, Exception)
             and article.get("content")
             and len(article["content"].strip()) > 100
         ]
