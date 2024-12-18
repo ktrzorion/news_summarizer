@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import asyncio
 from bs4 import BeautifulSoup as bs
+from playwright.async_api import async_playwright
 import traceback
 from LightRAG.lightrag.llm import gpt_4o_complete
 from langchain_openai import OpenAI
@@ -40,6 +41,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Common news content selectors
+content_selectors = [
+    'article', 
+    '.article-body', 
+    '.post-content', 
+    '#main-content', 
+    '.entry-content', 
+    'div[itemprop="articleBody"]'
+]
 
 WORKING_DIR = "./company_data"
 
@@ -156,16 +167,17 @@ async def search_news(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-async def scrape_article_content(url: str, max_retries: int = 3) -> str:
+async def scrape_article_content(url: str, max_retries: int = 3, use_dynamic: bool = False) -> str:
     """
-    Scrape the main content from a news article URL with multiple fallback strategies.
-    
+    Scrape the main content from a news article URL, supporting both dynamic and static websites.
+
     Args:
         url (str): The URL of the article to scrape
         max_retries (int): Number of retry attempts
-    
+        use_dynamic (bool): Whether to use dynamic rendering for the website
+
     Returns:
-        str: Extracted article content or empty string if scraping fails
+        str: Extracted article content or an empty string if scraping fails
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
@@ -173,18 +185,8 @@ async def scrape_article_content(url: str, max_retries: int = 3) -> str:
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     }
 
-    # Common news content selectors across different websites
-    content_selectors = [
-        'article', 
-        '.article-body', 
-        '.post-content', 
-        '#main-content', 
-        '.entry-content', 
-        'div[itemprop="articleBody"]'
-    ]
-
-    async def simple_extract(html_content: str) -> str:
-        """Extract content using multiple strategies"""
+    async def extract_content(html_content: str) -> str:
+        """Extract article content from the HTML."""
         soup = bs(html_content, "html.parser")
         
         # Try specific selectors first
@@ -200,33 +202,59 @@ async def scrape_article_content(url: str, max_retries: int = 3) -> str:
                 if content:
                     return content
         
-        # Fallback to all paragraphs if specific selectors fail
+        # Fallback to all paragraphs
         paragraphs = soup.find_all('p')
         content = ' '.join(
             p.get_text().strip() 
             for p in paragraphs 
             if len(p.get_text().strip()) > 20
         )
-        
         return content
 
+    # Try static fetching first
+    if not use_dynamic:
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+                    response = await client.get(url, timeout=30)
+                    
+                    if response.status_code != 200:
+                        logger.warning(f"Failed to fetch {url}: Status {response.status_code}")
+                        await asyncio.sleep(1)
+                        continue
+
+                    content = await extract_content(response.text)
+                    if content:
+                        return content
+            except Exception as e:
+                logger.error(f"Static scraping attempt {attempt + 1} failed for {url}: {traceback.format_exc()}")
+                await asyncio.sleep(1)
+
+    # Fallback to dynamic fetching
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-                response = await client.get(url, timeout=30)
-                
-                if response.status_code != 200:
-                    logger.warning(f"Failed to fetch {url}: Status {response.status_code}")
-                    await asyncio.sleep(1)
-                    continue
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, timeout=60000)  # 60-second timeout
 
-                content = await simple_extract(response.text)
+                # Wait for at least one selector to appear
+                for selector in content_selectors:
+                    try:
+                        await page.wait_for_selector(selector, timeout=5000)  # 5-second timeout
+                        break
+                    except:
+                        continue
+
+                html_content = await page.content()
+                content = await extract_content(html_content)
+                await browser.close()
 
                 if content:
                     return content
 
         except Exception as e:
-            logger.error(f"Scraping attempt {attempt + 1} failed for {url}: {traceback.format_exc()}")
+            logger.error(f"Dynamic scraping attempt {attempt + 1} failed for {url}: {traceback.format_exc()}")
             await asyncio.sleep(1)
 
     logger.warning(f"Failed to extract content from {url} after {max_retries} attempts")
