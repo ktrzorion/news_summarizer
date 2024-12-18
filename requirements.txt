@@ -133,7 +133,7 @@ patsy==1.0.1
 pdfminer.six==20191110
 pexpect==4.9.0
 pillow==11.0.0
-playwright==1.49.1
+playwright
 pluggy==1.5.0
 POT==0.9.5
 prompt_toolkit==3.0.48
@@ -150,7 +150,7 @@ Pygments==2.18.0
 pynndescent==0.5.13
 pyparsing==3.2.0
 pypdf==5.1.0
-pyppeteer==2.0.0
+pyppeteer
 pyquery==2.0.1
 pytest==8.3.4
 pytest-base-url==2.1.0
