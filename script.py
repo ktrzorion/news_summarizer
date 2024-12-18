@@ -238,12 +238,35 @@ def send_email_with_report(filepath: str):
     except Exception as e:
         print(f"Failed to send email: {e}")
         return False
+    
+def get_clients_from_env():
+    """
+    Retrieve and validate client names from environment variables.
+    
+    Returns:
+    - List of unique, non-empty client names
+    """
+    clients_str = os.getenv('CLIENTS', '')
+    
+    if not clients_str:
+        logger.warning("No CLIENTS environment variable found.")
+        return []
+    
+    # Split, strip, and remove duplicates while preserving order
+    clients = list(dict.fromkeys(
+        client.strip() 
+        for client in clients_str.split(',') 
+        if client.strip()
+    ))
+    
+    # Optional: Add minimum length validation
+    clients = [client for client in clients if len(client) >= 2]
+    
+    return clients
 
 def main():
     # List of smaller tech companies to generate reports for
-    clients = [
-        "HCL Technologies"
-    ]
+    clients = get_clients_from_env()
     
     # Run the async report generation
     reports = asyncio.run(generate_company_reports(clients))
