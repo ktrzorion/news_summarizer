@@ -6,8 +6,6 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 from datetime import datetime
 from typing import List, Dict
 from dotenv import load_dotenv
@@ -146,25 +144,69 @@ def save_reports_to_file(reports: List[Dict], filename: str = None):
 
 def send_email_with_report(filepath: str):
     """
-    Send email with the generated report as an attachment
+    Send email with the generated report as a readable text attachment
     
-    :param filepath: Path to the report file
+    :param filepath: Path to the JSON report file
     :return: Boolean indicating success or failure
     """
+
+    # Reload environment variables to ensure latest values
+    load_dotenv(override=True)
+
+    # Load email configuration from environment variables
+    smtp_server = os.getenv('EMAIL_SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('EMAIL_SMTP_PORT', 587))
+    sender_email = os.getenv('EMAIL_SENDER')
+    app_password = os.getenv('EMAIL_PASSWORD')
+    recipients = os.getenv('EMAIL_RECIPIENTS', '').split(',')
+
     # Validate email configuration
-    if not all([
-        EMAIL_CONFIG['sender_email'], 
-        EMAIL_CONFIG['sender_password'], 
-        EMAIL_CONFIG['recipients']
-    ]):
-        logger.error("Email configuration is incomplete. Check your .env file.")
+    if not all([sender_email, app_password, recipients]):
+        print("Email configuration is incomplete. Check your .env file.")
         return False
 
     try:
+        # Read the JSON file
+        with open(filepath, 'r', encoding='utf-8') as f:
+            reports = json.load(f)
+        
+        # Convert reports to a readable text format
+        report_text = "Company Reports\n"
+        report_text += "=" * 30 + "\n\n"
+        
+        for report in reports:
+            # Extract relevant information
+            company_name = report.get('company_name', 'Unknown Company')
+            status = report.get('status', 'Unknown')
+            generated_at = report.get('generated_at', 'N/A')
+            
+            # Add company report details
+            report_text += f"Company: {company_name}\n"
+            report_text += f"Status: {status}\n"
+            report_text += f"Generated At: {generated_at}\n"
+            
+            # Add additional details if available
+            if status == 'success':
+                # Example of extracting more details, adjust based on your actual report structure
+                if 'articles' in report:
+                    report_text += f"Articles Found: {len(report.get('articles', []))}\n"
+                
+                # Add any other relevant success metrics
+                report_text += "Key Insights:\n"
+                for key, value in report.items():
+                    if key not in ['company_name', 'status', 'generated_at', 'articles']:
+                        report_text += f"- {key}: {value}\n"
+            else:
+                # Add error details
+                error_message = report.get('error_message', 'No additional error details')
+                report_text += f"Error Details: {error_message}\n"
+            
+            report_text += "\n" + "-" * 30 + "\n\n"
+
         # Create multipart message
         message = MIMEMultipart()
-        message['From'] = EMAIL_CONFIG['sender_email']
-        message['To'] = ', '.join(EMAIL_CONFIG['recipients'])
+        message['From'] = sender_email
+        message['To'] = ', '.join(recipients)
         message['Subject'] = f"Company Reports - {datetime.now().strftime('%Y-%m-%d')}"
 
         # Email body
@@ -175,48 +217,32 @@ def send_email_with_report(filepath: str):
         """
         message.attach(MIMEText(body, 'plain'))
 
-        # Attach the report file
-        with open(filepath, 'rb') as attachment:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
-        
-        encoders.encode_base64(part)
-        part.add_header(
-            'Content-Disposition', 
-            f"attachment; filename= {os.path.basename(filepath)}"
-        )
-        message.attach(part)
+        # Attach the text report
+        text_report_part = MIMEText(report_text, 'plain')
+        text_report_part.add_header('Content-Disposition', 'attachment', filename=f"company_reports_{datetime.now().strftime('%Y-%m-%d')}.txt")
+        message.attach(text_report_part)
 
-        # Send email
-        with smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port']) as server:
+        # Send email with explicit app password authentication
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()  # Enable security
-            server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
+            server.login(sender_email, app_password)
             server.sendmail(
-                EMAIL_CONFIG['sender_email'], 
-                EMAIL_CONFIG['recipients'], 
+                sender_email, 
+                recipients, 
                 message.as_string()
             )
         
-        logger.info(f"Email sent successfully with report: {filepath}")
+        print(f"Email sent successfully with report: {filepath}")
         return True
     
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        print(f"Failed to send email: {e}")
         return False
 
 def main():
     # List of smaller tech companies to generate reports for
     clients = [
-        "HCL Technologies", 
-        "Infosys", 
-        "Wipro", 
-        "Cognizant", 
-        "Tech Mahindra", 
-        "Persistent Systems", 
-        "Mphasis",
-        "Mindtree",
-        "Zensar Technologies",
-        "NIIT Technologies"
+        "HCL Technologies"
     ]
     
     # Run the async report generation
