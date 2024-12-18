@@ -146,7 +146,6 @@ pycryptodome==3.21.0
 pydantic==2.9.2
 pydantic-settings==2.6.1
 pydantic_core==2.23.4
-pyee==12.0.0
 Pygments==2.18.0
 pynndescent==0.5.13
 pyparsing==3.2.0
