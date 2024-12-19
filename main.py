@@ -72,7 +72,7 @@ class CompanyReport(BaseModel):
 class PipelineRequest(BaseModel):
     company_name: str
     hours_ago: int = Field(default=24, ge=1, le=2000)
-    max_articles: int = Field(default=5, ge=1, le=10)
+    max_articles: int = Field(default=10, ge=1, le=10)
 
 class NewsItem(BaseModel):
     title: str
@@ -340,7 +340,7 @@ async def analyze_company(request: PipelineRequest):
         Format the response as a JSON object with:
         {{
             "summary": "A concise summary of the key findings (2-3 paragraphs)",
-            "key_points": ["List of 3-5 most important points, each 1-2 sentences"]
+            "key_points": ["List of 10 most important points, each 1-2 sentences"]
         }}
         """
         
@@ -349,8 +349,6 @@ async def analyze_company(request: PipelineRequest):
                 rag.aquery(report_prompt),
                 timeout=200
             )
-
-            print(report_result)
 
             report_result = re.sub(r'^```json\s*', '', report_result, flags=re.MULTILINE)
             report_result = re.sub(r'\s*```$', '', report_result, flags=re.MULTILINE)
