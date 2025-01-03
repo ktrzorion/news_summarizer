@@ -65,9 +65,9 @@ rag = LightRAG(
 
 class CompanyReport(BaseModel):
     company_name: str
-    summary: str
+    # summary: str
     key_points: List[str]
-    source_urls: List[str]
+    # source_urls: List[str]
 
 class PipelineRequest(BaseModel):
     company_name: str
@@ -305,29 +305,29 @@ async def analyze_company(request: PipelineRequest):
 
         logger.info(f"Successfully processed {len(valid_articles)} articles")
 
-        source_urls = []
-        for article in valid_articles:
-            try:
-                full_content = f"""
-                Title: {article['title']}
-                Source: {article['source']}
-                Date: {article['date']}
-                URL: {article['url']}
+        # source_urls = []
+        # for article in valid_articles:
+        #     try:
+        #         full_content = f"""
+        #         Title: {article['title']}
+        #         Source: {article['source']}
+        #         Date: {article['date']}
+        #         URL: {article['url']}
 
-                Content:
-                {article['content']}
-                """
+        #         Content:
+        #         {article['content']}
+        #         """
 
-                await rag.ainsert(full_content)
-                source_urls.append(article['url'])
-                logger.info(f"Successfully inserted content from {article['url']}")
+        #         await rag.ainsert(full_content)
+        #         source_urls.append(article['url'])
+        #         logger.info(f"Successfully inserted content from {article['url']}")
 
-            except Exception as e:
-                logger.error(f"Failed to insert content: {e}")
-                continue
+        #     except Exception as e:
+        #         logger.error(f"Failed to insert content: {e}")
+        #         continue
 
-        if not source_urls:
-            raise HTTPException(status_code=500, detail="Failed to process any articles through RAG system")
+        # if not source_urls:
+        #     raise HTTPException(status_code=500, detail="Failed to process any articles through RAG system")
 
         report_prompt = f"""
         Based on the recent news articles about {request.company_name}, create a comprehensive analysis.
@@ -339,7 +339,6 @@ async def analyze_company(request: PipelineRequest):
 
         Format the response as a JSON object with:
         {{
-            "summary": "A concise summary of the key findings (2-3 paragraphs)",
             "key_points": ["List of 10 most important points, each 1-2 sentences"]
         }}
         """
@@ -351,8 +350,10 @@ async def analyze_company(request: PipelineRequest):
             )
 
             report_result = re.sub(r'^```json\s*', '', report_result, flags=re.MULTILINE)
+            print(report_result)
             report_result = re.sub(r'\s*```$', '', report_result, flags=re.MULTILINE)
             report_result = report_result.strip()
+
 
         except asyncio.TimeoutError:
             logger.error("Report generation timed out")
@@ -378,7 +379,8 @@ async def analyze_company(request: PipelineRequest):
                 detail="Invalid report format: not a JSON object"
             )
 
-        required_fields = {'summary', 'key_points'}
+        # required_fields = {'summary', 'key_points'}
+        required_fields = {'key_points'}
         missing_fields = required_fields - set(report_data.keys())
         if missing_fields:
             raise HTTPException(
@@ -393,10 +395,10 @@ async def analyze_company(request: PipelineRequest):
             )
 
         # Sanitize and validate the content
-        summary = str(report_data['summary']).strip()
+        # summary = str(report_data['summary']).strip()
         key_points = [str(point).strip() for point in report_data['key_points'] if point]
 
-        if not summary or not key_points:
+        if not key_points:
             raise HTTPException(
                 status_code=500,
                 detail="Invalid report content: empty summary or key points"
@@ -405,9 +407,9 @@ async def analyze_company(request: PipelineRequest):
         # Create the final report
         company_report = CompanyReport(
             company_name=request.company_name,
-            summary=summary,
+            # summary=summary,
             key_points=key_points,
-            source_urls=source_urls
+            # source_urls=source_urls
         )
 
         return company_report
