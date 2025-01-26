@@ -36,7 +36,7 @@ EMAIL_CONFIG = {
     'recipients': os.getenv('EMAIL_RECIPIENTS', '').split(',')
 }
 
-async def analyze_company(session: aiohttp.ClientSession, company_name: str, hours_ago: int = 24, max_articles: int = 5) -> Dict:
+async def analyze_company(session: aiohttp.ClientSession, company_name: str) -> Dict:
     """
     Asynchronously generate a report for a single company
     
@@ -49,9 +49,7 @@ async def analyze_company(session: aiohttp.ClientSession, company_name: str, hou
     try:
         # Prepare payload
         payload = {
-            "company_name": company_name,
-            "hours_ago": hours_ago,
-            "max_articles": max_articles
+            "company_name": company_name
         }
         
         # Make async POST request
@@ -105,7 +103,7 @@ async def generate_company_reports(clients: List[str], hours_ago: int = 24, max_
     async with aiohttp.ClientSession() as session:
         # Create tasks for each company
         tasks = [
-            analyze_company(session, company, hours_ago, max_articles) 
+            analyze_company(session, company) 
             for company in clients
         ]
         
